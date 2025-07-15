@@ -115,13 +115,11 @@ const Game = () => {
         
         // Player 2 (Right) controls: Arrow keys
         const arc2Movement = (keysPressed.current['arrowright'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['arrowleft'] ? PADDLE_SPEED_DEGREES : 0);
-        setArc2Angle(prev => {
-            const nextAngleRaw = prev + arc2Movement;
-            const limit = 90 - ARC_LENGTH_DEGREES / 2;
-            if (nextAngleRaw >= limit && nextAngleRaw <= 270 + ARC_LENGTH_DEGREES /2) return limit;
-            if (nextAngleRaw <= -limit && nextAngleRaw > -270 - ARC_LENGTH_DEGREES/2) return -limit;
-            return nextAngleRaw;
-        });
+        let nextArc2Angle = arc2Angle + arc2Movement;
+        if (nextArc2Angle > 90 - ARC_LENGTH_DEGREES / 2) nextArc2Angle = 90 - ARC_LENGTH_DEGREES / 2;
+        if (nextArc2Angle < -90 + ARC_LENGTH_DEGREES / 2) nextArc2Angle = -90 + ARC_LENGTH_DEGREES / 2;
+        setArc2Angle(nextArc2Angle);
+        
 
         let gameOver = false;
         const updatedBalls = balls.map(ball => {
@@ -140,7 +138,8 @@ const Game = () => {
 
                 const isHittingArc2 = () => {
                      const halfArc = ARC_LENGTH_DEGREES / 2;
-                     const normalizedAngle = ballAngleDegrees > 270 ? ballAngleDegrees - 360 : ballAngleDegrees;
+                     let normalizedAngle = ballAngleDegrees;
+                     if (normalizedAngle > 270) normalizedAngle -= 360; // Normalize to -90 to 270 range
                      return normalizedAngle >= arc2Angle - halfArc && normalizedAngle <= arc2Angle + halfArc;
                 };
 
@@ -230,7 +229,7 @@ const Game = () => {
 
             <div className="relative mt-4" style={{ width: gameSize, height: gameSize }}>
                 <svg width={gameSize} height={gameSize} viewBox={`${-gameSize/2} ${-gameSize/2} ${gameSize} ${gameSize}`} className="absolute inset-0">
-                    <circle cx="0" cy="0" r={arcRadius} stroke="white" strokeWidth="2" fill="none" />
+                    <circle cx="0" cy="0" r={gameRadius - arcThickness / 2} stroke="white" strokeWidth="2" fill="none" />
                 </svg>
                 <AnimatePresence>
                     {gameState === 'idle' && (
@@ -272,5 +271,3 @@ const Game = () => {
     );
 };
 export default Game;
-
-    
