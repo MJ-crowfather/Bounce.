@@ -13,7 +13,7 @@ const ARC_THICKNESS_RATIO = 10 / BASE_GAME_SIZE;
 const ARC_LENGTH_DEGREES = 60; // 1/6th of 360
 const PADDLE_SPEED_DEGREES = 3;
 const INITIAL_BALL_SPEED_RATIO = 3 / BASE_GAME_SIZE;
-const SPEED_INCREASE_ON_BOUNCE = 1.15;
+const SPEED_INCREASE_ON_BOUNCE = 1.15; // 15% speed increase
 
 const degreesToRadians = (deg: number) => deg * (Math.PI / 180);
 const radiansToDegrees = (rad: number) => rad * (180 / Math.PI);
@@ -45,9 +45,11 @@ const Game = () => {
 
     // Input State & Refs
     const keysPressed = useRef<{ [key: string]: boolean }>({});
+    const activeTouches = useRef<{ [touchId: number]: 'arc1' | 'arc2' }>({});
     const gameLoopRef = useRef<number>();
     const nextBallId = useRef(0);
-    const bounceCount = useRef(0);
+    const gameAreaRef = useRef<HTMLDivElement>(null);
+
 
     // --- Effects ---
 
@@ -97,7 +99,6 @@ const Game = () => {
 
     const startGame = useCallback(() => {
         setScore(0);
-        bounceCount.current = 0;
         setBalls([]);
         setArc1Angle(180);
         setArc2Angle(0);
@@ -106,20 +107,34 @@ const Game = () => {
         setGameState('playing');
     }, [addNewBall]);
 
+    const handleArcMove = useCallback((angle: number, arc: 'arc1' | 'arc2') => {
+        const halfArc = ARC_LENGTH_DEGREES / 2;
+        if (arc === 'arc1') {
+            const clampedAngle = Math.max(90 + halfArc, Math.min(270 - halfArc, angle));
+            setArc1Angle(clampedAngle);
+        } else { // arc2
+             let normalizedAngle = angle;
+             if (normalizedAngle > 270) normalizedAngle -= 360;
+             const clampedAngle = Math.max(-90 + halfArc, Math.min(90 - halfArc, normalizedAngle));
+             setArc2Angle(clampedAngle);
+        }
+    }, []);
+
     const gameLoop = useCallback(() => {
         if (gameState !== 'playing') return;
 
-        // Player 1 (Left) controls: A/D keys
-        const arc1Movement = (keysPressed.current['d'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['a'] ? PADDLE_SPEED_DEGREES : 0);
-        setArc1Angle(prev => Math.max(90 + ARC_LENGTH_DEGREES/2, Math.min(270 - ARC_LENGTH_DEGREES/2, prev + arc1Movement)));
+        // Player 1 (Left) keyboard controls: A/D keys
+        if (keysPressed.current['d'] || keysPressed.current['a']) {
+            const arc1Movement = (keysPressed.current['d'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['a'] ? PADDLE_SPEED_DEGREES : 0);
+            handleArcMove(arc1Angle + arc1Movement, 'arc1');
+        }
         
-        // Player 2 (Right) controls: Arrow keys
-        const arc2Movement = (keysPressed.current['arrowright'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['arrowleft'] ? PADDLE_SPEED_DEGREES : 0);
-        let nextArc2Angle = arc2Angle + arc2Movement;
-        if (nextArc2Angle > 90 - ARC_LENGTH_DEGREES / 2) nextArc2Angle = 90 - ARC_LENGTH_DEGREES / 2;
-        if (nextArc2Angle < -90 + ARC_LENGTH_DEGREES / 2) nextArc2Angle = -90 + ARC_LENGTH_DEGREES / 2;
-        setArc2Angle(nextArc2Angle);
-        
+        // Player 2 (Right) keyboard controls: Arrow keys
+        if (keysPressed.current['arrowright'] || keysPressed.current['arrowleft']) {
+            const arc2Movement = (keysPressed.current['arrowright'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['arrowleft'] ? PADDLE_SPEED_DEGREES : 0);
+            handleArcMove(arc2Angle + arc2Movement, 'arc2');
+        }
+
         let gameOver = false;
         let bouncesThisFrame = 0;
 
@@ -140,7 +155,7 @@ const Game = () => {
                 const isHittingArc2 = () => {
                      const halfArc = ARC_LENGTH_DEGREES / 2;
                      let normalizedAngle = ballAngleDegrees;
-                     if (normalizedAngle > 270) normalizedAngle -= 360; // Normalize to -90 to 270 range
+                     if (normalizedAngle > 270) normalizedAngle -= 360;
                      return normalizedAngle >= arc2Angle - halfArc && normalizedAngle <= arc2Angle + halfArc;
                 };
 
@@ -175,17 +190,6 @@ const Game = () => {
         });
 
         if (bouncesThisFrame > 0) {
-            const previousBounceCount = bounceCount.current;
-            const newBounceCount = previousBounceCount + bouncesThisFrame;
-            bounceCount.current = newBounceCount;
-
-            const previousFiveCount = Math.floor(previousBounceCount / 5);
-            const newFiveCount = Math.floor(newBounceCount / 5);
-
-            if (newFiveCount > previousFiveCount) {
-                addNewBall();
-            }
-
             setScore(prev => prev + bouncesThisFrame);
         }
 
@@ -200,7 +204,7 @@ const Game = () => {
         }
 
         gameLoopRef.current = requestAnimationFrame(gameLoop);
-    }, [score, highScore, arcRadius, ballRadius, gameState, addNewBall, balls, arc1Angle, arc2Angle]);
+    }, [score, highScore, arcRadius, ballRadius, gameState, balls, arc1Angle, arc2Angle, handleArcMove]);
 
     useEffect(() => {
         if (gameState === 'playing') {
@@ -210,6 +214,40 @@ const Game = () => {
             if (gameLoopRef.current) cancelAnimationFrame(gameLoopRef.current);
         };
     }, [gameState, gameLoop]);
+    
+    // --- Touch Handlers ---
+    const handleTouch = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        if (gameState !== 'playing' || !gameAreaRef.current) return;
+
+        const rect = gameAreaRef.current.getBoundingClientRect();
+        
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            const touchX = touch.clientX - rect.left - gameSize / 2;
+            const touchY = touch.clientY - rect.top - gameSize / 2;
+
+            const touchAngle = (radiansToDegrees(Math.atan2(touchY, touchX)) + 360) % 360;
+            
+            if (e.type === 'touchstart') {
+                if (touchX < 0) { // Left half
+                    activeTouches.current[touch.identifier] = 'arc1';
+                    handleArcMove(touchAngle, 'arc1');
+                } else { // Right half
+                    activeTouches.current[touch.identifier] = 'arc2';
+                    handleArcMove(touchAngle, 'arc2');
+                }
+            } else if (e.type === 'touchmove') {
+                const associatedArc = activeTouches.current[touch.identifier];
+                if (associatedArc) {
+                    handleArcMove(touchAngle, associatedArc);
+                }
+            } else if (e.type === 'touchend' || e.type === 'touchcancel') {
+                 delete activeTouches.current[touch.identifier];
+            }
+        }
+    }, [gameState, gameSize, handleArcMove]);
+
 
     const Arc = ({ angle, ...props }: { angle: number, [key: string]: any }) => {
         const startAngleRad = degreesToRadians(angle - ARC_LENGTH_DEGREES / 2);
@@ -237,7 +275,15 @@ const Game = () => {
                 </div>
             </div>
 
-            <div className="relative mt-4" style={{ width: gameSize, height: gameSize }}>
+            <div 
+                ref={gameAreaRef}
+                className="relative mt-4" 
+                style={{ width: gameSize, height: gameSize }}
+                onTouchStart={handleTouch}
+                onTouchMove={handleTouch}
+                onTouchEnd={handleTouch}
+                onTouchCancel={handleTouch}
+            >
                 <svg width={gameSize} height={gameSize} viewBox={`${-gameSize/2} ${-gameSize/2} ${gameSize} ${gameSize}`} className="absolute inset-0">
                     <circle cx="0" cy="0" r={gameRadius - arcThickness / 2} stroke="white" strokeWidth="2" fill="none" />
                 </svg>
@@ -274,7 +320,8 @@ const Game = () => {
             </div>
 
             <div className="mt-6 text-center text-primary/80 text-xs sm:text-sm max-w-md px-4">
-                <p className="mb-2">A/D for left paddle, ←/→ for right paddle.</p>
+                <p className="mb-2">Keyboard: A/D for left paddle, ←/→ for right.</p>
+                <p className="mb-2">Touch: Drag each half of the circle to move the paddles.</p>
                 <p>Don't let the ball escape the circle!</p>
             </div>
         </div>
