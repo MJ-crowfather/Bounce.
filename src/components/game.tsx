@@ -5,12 +5,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { RotateCcw } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 // Game Constants - these will be scaled
 const BASE_GAME_SIZE = 500;
 const BALL_RADIUS_RATIO = 10 / BASE_GAME_SIZE;
 const ARC_THICKNESS_RATIO = 10 / BASE_GAME_SIZE;
-const ARC_LENGTH_DEGREES = 60; // 1/6th of 360
+const ARC_LENGTH_DEGREES = 60;
 const PADDLE_SPEED_DEGREES = 3;
 const INITIAL_BALL_SPEED_RATIO = 3 / BASE_GAME_SIZE;
 const SPEED_INCREASE_ON_BOUNCE = 1.15; // 15% speed increase
@@ -38,17 +40,18 @@ const Game = () => {
     const [score, setScore] = useState(0);
     const [highScore, setHighScore] = useState(0);
     const [balls, setBalls] = useState<Ball[]>([]);
-
+    
     // Physics State
     const [arc1Angle, setArc1Angle] = useState(180); // Left half center
     const [arc2Angle, setArc2Angle] = useState(0);   // Right half center
 
     // Input State & Refs
     const keysPressed = useRef<{ [key: string]: boolean }>({});
-    const activeTouches = useRef<{ [touchId: number]: 'arc1' | 'arc2' }>({});
     const gameLoopRef = useRef<number>();
     const nextBallId = useRef(0);
     const gameAreaRef = useRef<HTMLDivElement>(null);
+
+    const isMobile = useIsMobile();
 
 
     // --- Effects ---
@@ -123,16 +126,16 @@ const Game = () => {
     const gameLoop = useCallback(() => {
         if (gameState !== 'playing') return;
 
-        // Player 1 (Left) keyboard controls: A/D keys
-        if (keysPressed.current['d'] || keysPressed.current['a']) {
-            const arc1Movement = (keysPressed.current['d'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['a'] ? PADDLE_SPEED_DEGREES : 0);
-            handleArcMove(arc1Angle + arc1Movement, 'arc1');
-        }
-        
-        // Player 2 (Right) keyboard controls: Arrow keys
-        if (keysPressed.current['arrowright'] || keysPressed.current['arrowleft']) {
-            const arc2Movement = (keysPressed.current['arrowright'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['arrowleft'] ? PADDLE_SPEED_DEGREES : 0);
-            handleArcMove(arc2Angle + arc2Movement, 'arc2');
+        // Keyboard controls (non-mobile)
+        if (!isMobile) {
+            if (keysPressed.current['d'] || keysPressed.current['a']) {
+                const arc1Movement = (keysPressed.current['d'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['a'] ? PADDLE_SPEED_DEGREES : 0);
+                handleArcMove(arc1Angle + arc1Movement, 'arc1');
+            }
+            if (keysPressed.current['arrowright'] || keysPressed.current['arrowleft']) {
+                const arc2Movement = (keysPressed.current['arrowright'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['arrowleft'] ? PADDLE_SPEED_DEGREES : 0);
+                handleArcMove(arc2Angle + arc2Movement, 'arc2');
+            }
         }
 
         let gameOver = false;
@@ -204,7 +207,7 @@ const Game = () => {
         }
 
         gameLoopRef.current = requestAnimationFrame(gameLoop);
-    }, [score, highScore, arcRadius, ballRadius, gameState, balls, arc1Angle, arc2Angle, handleArcMove]);
+    }, [score, highScore, arcRadius, ballRadius, gameState, balls, arc1Angle, arc2Angle, handleArcMove, isMobile]);
 
     useEffect(() => {
         if (gameState === 'playing') {
@@ -215,40 +218,6 @@ const Game = () => {
         };
     }, [gameState, gameLoop]);
     
-    // --- Touch Handlers ---
-    const handleTouch = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        if (gameState !== 'playing' || !gameAreaRef.current) return;
-
-        const rect = gameAreaRef.current.getBoundingClientRect();
-        
-        for (let i = 0; i < e.changedTouches.length; i++) {
-            const touch = e.changedTouches[i];
-            const touchX = touch.clientX - rect.left - gameSize / 2;
-            const touchY = touch.clientY - rect.top - gameSize / 2;
-
-            const touchAngle = (radiansToDegrees(Math.atan2(touchY, touchX)) + 360) % 360;
-            
-            if (e.type === 'touchstart') {
-                if (touchX < 0) { // Left half
-                    activeTouches.current[touch.identifier] = 'arc1';
-                    handleArcMove(touchAngle, 'arc1');
-                } else { // Right half
-                    activeTouches.current[touch.identifier] = 'arc2';
-                    handleArcMove(touchAngle, 'arc2');
-                }
-            } else if (e.type === 'touchmove') {
-                const associatedArc = activeTouches.current[touch.identifier];
-                if (associatedArc) {
-                    handleArcMove(touchAngle, associatedArc);
-                }
-            } else if (e.type === 'touchend' || e.type === 'touchcancel') {
-                 delete activeTouches.current[touch.identifier];
-            }
-        }
-    }, [gameState, gameSize, handleArcMove]);
-
-
     const Arc = ({ angle, ...props }: { angle: number, [key: string]: any }) => {
         const startAngleRad = degreesToRadians(angle - ARC_LENGTH_DEGREES / 2);
         const endAngleRad = degreesToRadians(angle + ARC_LENGTH_DEGREES / 2);
@@ -261,6 +230,8 @@ const Game = () => {
         const d = `M ${x1} ${y1} A ${arcRadius} ${arcRadius} 0 0 1 ${x2} ${y2}`;
         return <path d={d} stroke="white" strokeWidth={arcThickness} fill="none" strokeLinecap="round" {...props} />;
     };
+
+    const halfArc = ARC_LENGTH_DEGREES / 2;
 
     return (
         <div className="relative flex flex-col items-center justify-center font-headline text-primary select-none w-full">
@@ -279,10 +250,6 @@ const Game = () => {
                 ref={gameAreaRef}
                 className="relative mt-4" 
                 style={{ width: gameSize, height: gameSize }}
-                onTouchStart={handleTouch}
-                onTouchMove={handleTouch}
-                onTouchEnd={handleTouch}
-                onTouchCancel={handleTouch}
             >
                 <svg width={gameSize} height={gameSize} viewBox={`${-gameSize/2} ${-gameSize/2} ${gameSize} ${gameSize}`} className="absolute inset-0">
                     <circle cx="0" cy="0" r={gameRadius - arcThickness / 2} stroke="white" strokeWidth="2" fill="none" />
@@ -319,10 +286,31 @@ const Game = () => {
                 </div>
             </div>
 
+            {isMobile && gameState === 'playing' && (
+                <div className="flex justify-between w-full mt-8 px-4" style={{ maxWidth: gameSize }}>
+                    <Slider
+                        value={[arc1Angle]}
+                        onValueChange={(value) => handleArcMove(value[0], 'arc1')}
+                        min={90 + halfArc}
+                        max={270 - halfArc}
+                        step={1}
+                        className="w-[45%]"
+                    />
+                    <Slider
+                        value={[arc2Angle]}
+                        onValueChange={(value) => handleArcMove(value[0], 'arc2')}
+                        min={-90 + halfArc}
+                        max={90 - halfArc}
+                        step={1}
+                        className="w-[45%]"
+                    />
+                </div>
+            )}
+
             <div className="mt-6 text-center text-primary/80 text-xs sm:text-sm max-w-md px-4">
-                <p className="mb-2">Keyboard: A/D for left paddle, ←/→ for right.</p>
-                <p className="mb-2">Touch: Drag each half of the circle to move the paddles.</p>
-                <p>Don't let the ball escape the circle!</p>
+                <p className="mb-2">Keyboard: A/D for left, ←/→ for right.</p>
+                <p className="mb-2">Touch: Use sliders to move the paddles.</p>
+                <p>Don't let the ball escape!</p>
             </div>
         </div>
     );
