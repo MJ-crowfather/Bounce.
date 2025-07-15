@@ -13,7 +13,7 @@ const ARC_THICKNESS_RATIO = 10 / BASE_GAME_SIZE;
 const ARC_LENGTH_DEGREES = 60; // 1/6th of 360
 const PADDLE_SPEED_DEGREES = 3;
 const INITIAL_BALL_SPEED_RATIO = 3 / BASE_GAME_SIZE;
-const SPEED_INCREASE_ON_BOUNCE = 1.15; // 20% increase
+const SPEED_INCREASE_ON_BOUNCE = 1.15; // 15% increase
 
 const degreesToRadians = (deg: number) => deg * (Math.PI / 180);
 const radiansToDegrees = (rad: number) => rad * (180 / Math.PI);
@@ -47,7 +47,7 @@ const Game = () => {
     const keysPressed = useRef<{ [key: string]: boolean }>({});
     const gameLoopRef = useRef<number>();
     const nextBallId = useRef(0);
-    const bounceCount = useRef(0); // ✅ New: track total bounces
+    const bounceCount = useRef(0);
 
     // --- Effects ---
 
@@ -97,7 +97,7 @@ const Game = () => {
 
     const startGame = useCallback(() => {
         setScore(0);
-        bounceCount.current = 0; // ✅ Reset bounce count
+        bounceCount.current = 0;
         setBalls([]);
         setArc1Angle(180);
         setArc2Angle(0);
@@ -109,13 +109,16 @@ const Game = () => {
     const gameLoop = useCallback(() => {
         if (gameState !== 'playing') return;
 
+        // Player 1 (Left) controls: A/D keys
         const arc1Movement = (keysPressed.current['d'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['a'] ? PADDLE_SPEED_DEGREES : 0);
         setArc1Angle(prev => Math.max(90 + ARC_LENGTH_DEGREES/2, Math.min(270 - ARC_LENGTH_DEGREES/2, prev + arc1Movement)));
 
+        // Player 2 (Right) controls: Arrow keys
         const arc2Movement = (keysPressed.current['arrowright'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['arrowleft'] ? PADDLE_SPEED_DEGREES : 0);
         setArc2Angle(prev => {
             const nextAngleRaw = prev + arc2Movement;
-            const limit = 90 - ARC_LENGTH_DEGREES/2;
+            const limit = 90 - ARC_LENGTH_DEGREES / 2;
+            // Clamp within -limit and +limit
             if (nextAngleRaw > limit) return limit;
             if (nextAngleRaw < -limit) return -limit;
             return nextAngleRaw;
@@ -143,9 +146,10 @@ const Game = () => {
                 };
 
                 if (isHittingArc1() || isHittingArc2()) {
-                    bounceCount.current += 1; // ✅ Track bounce
                     setScore(prev => prev + 1);
-                    if (bounceCount.current % 5 === 0) {
+                    bounceCount.current += 1;
+                    
+                    if (bounceCount.current > 0 && bounceCount.current % 5 === 0) {
                         addNewBall();
                     }
 
@@ -156,18 +160,18 @@ const Game = () => {
 
                     newVelDx *= SPEED_INCREASE_ON_BOUNCE;
                     newVelDy *= SPEED_INCREASE_ON_BOUNCE;
-
+                    
                     const randomAngle = (Math.random() - 0.5) * degreesToRadians(10);
                     const cos = Math.cos(randomAngle);
                     const sin = Math.sin(randomAngle);
                     const finalVelDx = newVelDx * cos - newVelDy * sin;
                     const finalVelDy = newVelDx * sin + newVelDy * cos;
-                    ball.vel = { dx: finalVelDx, dy: finalVelDy };
 
-                    newPos.x -= normal.x * 2;
-                    newPos.y -= normal.y * 2;
-
-                    return { ...ball, pos: newPos, vel: ball.vel };
+                    return { 
+                        ...ball, 
+                        pos: newPos, 
+                        vel: { dx: finalVelDx, dy: finalVelDy }
+                    };
                 } else {
                     gameOver = true;
                     return ball;
@@ -263,7 +267,7 @@ const Game = () => {
 
             <div className="mt-6 text-center text-primary/80 text-xs sm:text-sm max-w-md px-4">
                 <p className="mb-2">A/D for left paddle, ←/→ for right paddle.</p>
-                <p>Don't let the balls escape the circle!</p>
+                <p>Don't let the ball escape the circle!</p>
             </div>
         </div>
     );
