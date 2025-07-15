@@ -120,8 +120,9 @@ const Game = () => {
         if (nextArc2Angle < -90 + ARC_LENGTH_DEGREES / 2) nextArc2Angle = -90 + ARC_LENGTH_DEGREES / 2;
         setArc2Angle(nextArc2Angle);
         
-
         let gameOver = false;
+        let bouncesThisFrame = 0;
+
         const updatedBalls = balls.map(ball => {
             if (gameOver) return ball;
 
@@ -144,13 +145,8 @@ const Game = () => {
                 };
 
                 if (isHittingArc1() || isHittingArc2()) {
-                    setScore(prev => prev + 1);
-                    bounceCount.current += 1;
+                    bouncesThisFrame++;
                     
-                    if (bounceCount.current > 0 && bounceCount.current % 5 === 0) {
-                        addNewBall();
-                    }
-
                     const normal = { x: newPos.x / distFromCenter, y: newPos.y / distFromCenter };
                     const dot = ball.vel.dx * normal.x + ball.vel.dy * normal.y;
                     let newVelDx = ball.vel.dx - 2 * dot * normal.x;
@@ -178,13 +174,27 @@ const Game = () => {
             return { ...ball, pos: newPos };
         });
 
+        if (bouncesThisFrame > 0) {
+            const previousBounceCount = bounceCount.current;
+            const newBounceCount = previousBounceCount + bouncesThisFrame;
+            bounceCount.current = newBounceCount;
+
+            const previousFiveCount = Math.floor(previousBounceCount / 5);
+            const newFiveCount = Math.floor(newBounceCount / 5);
+
+            if (newFiveCount > previousFiveCount) {
+                addNewBall();
+            }
+
+            setScore(prev => prev + bouncesThisFrame);
+        }
+
         if (gameOver) {
             setGameState('gameOver');
             if (score > highScore) {
                 setHighScore(score);
                 localStorage.setItem('bounceHighScore', score.toString());
             }
-            setBalls([]);
         } else {
             setBalls(updatedBalls);
         }
