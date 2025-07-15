@@ -13,7 +13,7 @@ const ARC_THICKNESS_RATIO = 10 / BASE_GAME_SIZE;
 const ARC_LENGTH_DEGREES = 60; // 1/6th of 360
 const PADDLE_SPEED_DEGREES = 3;
 const INITIAL_BALL_SPEED_RATIO = 3 / BASE_GAME_SIZE;
-const SPEED_INCREASE_ON_BOUNCE = 1.10; // 10% increase
+const SPEED_INCREASE_ON_BOUNCE = 1.20; // 20% increase
 
 const degreesToRadians = (deg: number) => deg * (Math.PI / 180);
 const radiansToDegrees = (rad: number) => rad * (180 / Math.PI);
@@ -34,7 +34,7 @@ const Game = () => {
     const arcRadius = gameRadius - arcThickness / 2;
 
     // Game State
-    const [gameState, setGameState] = useState<'idle' | 'playing' | 'gameOver'>('idle');
+    const [gameState, setGameState<'idle' | 'playing' | 'gameOver'>('idle');
     const [score, setScore] = useState(0);
     const [highScore, setHighScore] = useState(0);
     const [balls, setBalls] = useState<Ball[]>([]);
@@ -146,7 +146,7 @@ const Game = () => {
                     setScore(newScore);
 
                     if (newScore > 0 && newScore % 5 === 0) {
-                         addNewBall();
+                        addNewBall();
                     }
 
                     // Reflect velocity
@@ -170,7 +170,7 @@ const Game = () => {
                     newPos.x -= normal.x * 2;
                     newPos.y -= normal.y * 2;
                     
-                    return { ...ball, pos: newPos };
+                    return { ...ball, pos: newPos, vel: ball.vel };
 
                 } else {
                     // Ball missed, trigger game over
@@ -235,7 +235,7 @@ const Game = () => {
 
             <div className="relative mt-4" style={{ width: gameSize, height: gameSize }}>
                 <svg width={gameSize} height={gameSize} viewBox={`${-gameSize/2} ${-gameSize/2} ${gameSize} ${gameSize}`} className="absolute inset-0">
-                     <circle cx="0" cy="0" r={arcRadius} stroke="white" strokeWidth="2" fill="none" />
+                     <circle cx="0" cy="0" r={gameRadius - arcThickness / 2} stroke="white" strokeWidth="2" fill="none" />
                 </svg>
                 <AnimatePresence>
                     {gameState === 'idle' && (
@@ -275,7 +275,5 @@ const Game = () => {
             </div>
         </div>
     );
-};
+}
 export default Game;
-
-    
