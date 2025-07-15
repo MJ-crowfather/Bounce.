@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -12,9 +13,16 @@ const ARC_THICKNESS_RATIO = 10 / BASE_GAME_SIZE;
 const ARC_LENGTH_DEGREES = 60; // 1/6th of 360
 const PADDLE_SPEED_DEGREES = 3;
 const INITIAL_BALL_SPEED_RATIO = 3 / BASE_GAME_SIZE;
+const SPEED_INCREASE_ON_BOUNCE = 1.10; // 10% increase
 
 const degreesToRadians = (deg: number) => deg * (Math.PI / 180);
 const radiansToDegrees = (rad: number) => rad * (180 / Math.PI);
+
+interface Ball {
+    id: number;
+    pos: { x: number; y: number };
+    vel: { dx: number; dy: number };
+}
 
 const Game = () => {
     // Game Dimensions
@@ -29,16 +37,16 @@ const Game = () => {
     const [gameState, setGameState] = useState<'idle' | 'playing' | 'gameOver'>('idle');
     const [score, setScore] = useState(0);
     const [highScore, setHighScore] = useState(0);
+    const [balls, setBalls] = useState<Ball[]>([]);
 
     // Physics State
-    const [ballPos, setBallPos] = useState({ x: 0, y: 0 }); // Relative to center
-    const ballVelRef = useRef({ dx: 0, dy: 0 });
-    const [arc1Angle, setArc1Angle] = useState(270); // Starts at bottom of left half
-    const [arc2Angle, setArc2Angle] = useState(90); // Starts at bottom of right half
+    const [arc1Angle, setArc1Angle] = useState(180); // Left half center
+    const [arc2Angle, setArc2Angle] = useState(0);   // Right half center
 
     // Input State & Refs
     const keysPressed = useRef<{ [key: string]: boolean }>({});
     const gameLoopRef = useRef<number>();
+    const nextBallId = useRef(0);
 
     // --- Effects ---
     
@@ -73,87 +81,112 @@ const Game = () => {
 
     // --- Game Logic ---
 
+    const addNewBall = useCallback(() => {
+        const angle = Math.random() * 2 * Math.PI;
+        const newBall: Ball = {
+            id: nextBallId.current++,
+            pos: { x: 0, y: 0 },
+            vel: {
+                dx: Math.cos(angle) * initialBallSpeed,
+                dy: Math.sin(angle) * initialBallSpeed,
+            },
+        };
+        setBalls(prev => [...prev, newBall]);
+    }, [initialBallSpeed]);
+
     const startGame = useCallback(() => {
         setScore(0);
-        setBallPos({ x: 0, y: 0 });
-        const angle = Math.random() * 2 * Math.PI;
-        ballVelRef.current = {
-            dx: Math.cos(angle) * initialBallSpeed,
-            dy: Math.sin(angle) * initialBallSpeed,
-        };
+        setBalls([]);
+        nextBallId.current = 0;
+        addNewBall();
         setGameState('playing');
-    }, [initialBallSpeed]);
+    }, [addNewBall]);
 
     const gameLoop = useCallback(() => {
         // Update Arc Positions
         const arc1Movement = (keysPressed.current['d'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['a'] ? PADDLE_SPEED_DEGREES : 0);
-        setArc1Angle(prev => Math.max(180, Math.min(360, prev + arc1Movement)));
+        setArc1Angle(prev => Math.max(90, Math.min(270, prev + arc1Movement)));
 
         const arc2Movement = (keysPressed.current['arrowright'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['arrowleft'] ? PADDLE_SPEED_DEGREES : 0);
         setArc2Angle(prev => {
-            const nextAngle = (prev + arc2Movement + 360) % 360;
-            if (nextAngle >= 0 && nextAngle <= 180) return nextAngle;
-            // Handle wrap-around from 0 to 360 for right paddle
-            if (prev < 10 && arc2Movement < 0) return 360; // moving left from 0
-            if (prev > 350 && arc2Movement > 0) return 0; // moving right from 360
-            return prev;
+            const nextAngleRaw = prev + arc2Movement;
+            if (nextAngleRaw > 90) return 90;
+            if (nextAngleRaw < -90) return -90;
+            return nextAngleRaw;
         });
 
-        // Update Ball Position and Velocity
-        let newPos = { x: ballPos.x + ballVelRef.current.dx, y: ballPos.y + ballVelRef.current.dy };
-        const distFromCenter = Math.sqrt(newPos.x * newPos.x + newPos.y * newPos.y);
-        
-        if (distFromCenter > arcRadius - ballRadius) {
-            const ballAngleDegrees = (radiansToDegrees(Math.atan2(newPos.y, newPos.x)) + 360) % 360;
-
-            const isHittingArc = (arcAngle: number) => {
-                const halfArc = ARC_LENGTH_DEGREES / 2;
-                let diff = Math.abs(ballAngleDegrees - arcAngle);
-                if (diff > 180) diff = 360 - diff;
-                return diff <= halfArc;
-            };
-
-            if (isHittingArc(arc1Angle) || isHittingArc(arc2Angle)) {
-                const newScore = score + 1;
-                setScore(newScore);
-
-                // Reflect velocity
-                const normal = { x: newPos.x / distFromCenter, y: newPos.y / distFromCenter };
-                const dot = ballVelRef.current.dx * normal.x + ballVelRef.current.dy * normal.y;
-                let newVelDx = ballVelRef.current.dx - 2 * dot * normal.x;
-                let newVelDy = ballVelRef.current.dy - 2 * dot * normal.y;
-                
-                // Increase speed every 3 bounces
-                if (newScore > 0 && newScore % 3 === 0) {
-                     newVelDx *= 1.2;
-                     newVelDy *= 1.2;
-                }
-
-                // Add slight random angle variation on bounce
-                const randomAngle = (Math.random() - 0.5) * degreesToRadians(10); // +/- 5 degrees
-                const cos = Math.cos(randomAngle);
-                const sin = Math.sin(randomAngle);
-                const finalVelDx = newVelDx * cos - newVelDy * sin;
-                const finalVelDy = newVelDx * sin + newVelDy * cos;
-                ballVelRef.current = { dx: finalVelDx, dy: finalVelDy };
-
-                // Move ball away from edge
-                newPos.x -= normal.x * 2;
-                newPos.y -= normal.y * 2;
-
-            } else {
+        setBalls(currentBalls => {
+            if (currentBalls.length === 0 && gameState === 'playing') {
                 setGameState('gameOver');
                 if (score > highScore) {
                     setHighScore(score);
                     localStorage.setItem('bounceHighScore', score.toString());
                 }
-                return;
+                return [];
             }
-        }
-        
-        setBallPos(newPos);
+
+            const updatedBalls = currentBalls.map(ball => {
+                let newPos = { x: ball.pos.x + ball.vel.dx, y: ball.pos.y + ball.vel.dy };
+                const distFromCenter = Math.sqrt(newPos.x * newPos.x + newPos.y * newPos.y);
+
+                if (distFromCenter > arcRadius - ballRadius) {
+                    const ballAngleDegrees = (radiansToDegrees(Math.atan2(newPos.y, newPos.x)) + 360) % 360;
+
+                    const isHittingArc1 = () => {
+                        const halfArc = ARC_LENGTH_DEGREES / 2;
+                        return ballAngleDegrees >= arc1Angle - halfArc && ballAngleDegrees <= arc1Angle + halfArc;
+                    };
+
+                    const isHittingArc2 = () => {
+                         const halfArc = ARC_LENGTH_DEGREES / 2;
+                         const normalizedAngle = ballAngleDegrees > 180 ? ballAngleDegrees - 360 : ballAngleDegrees;
+                         return normalizedAngle >= arc2Angle - halfArc && normalizedAngle <= arc2Angle + halfArc;
+                    };
+
+                    if (isHittingArc1() || isHittingArc2()) {
+                        const newScore = score + 1;
+                        setScore(newScore);
+
+                        if (newScore > 0 && newScore % 5 === 0) {
+                             addNewBall();
+                        }
+
+                        // Reflect velocity
+                        const normal = { x: newPos.x / distFromCenter, y: newPos.y / distFromCenter };
+                        const dot = ball.vel.dx * normal.x + ball.vel.dy * normal.y;
+                        let newVelDx = ball.vel.dx - 2 * dot * normal.x;
+                        let newVelDy = ball.vel.dy - 2 * dot * normal.y;
+                        
+                        newVelDx *= SPEED_INCREASE_ON_BOUNCE;
+                        newVelDy *= SPEED_INCREASE_ON_BOUNCE;
+
+                        // Add slight random angle variation on bounce
+                        const randomAngle = (Math.random() - 0.5) * degreesToRadians(10); // +/- 5 degrees
+                        const cos = Math.cos(randomAngle);
+                        const sin = Math.sin(randomAngle);
+                        const finalVelDx = newVelDx * cos - newVelDy * sin;
+                        const finalVelDy = newVelDx * sin + newVelDy * cos;
+                        ball.vel = { dx: finalVelDx, dy: finalVelDy };
+
+                        // Move ball away from edge
+                        newPos.x -= normal.x * 2;
+                        newPos.y -= normal.y * 2;
+                        
+                        return { ...ball, pos: newPos };
+
+                    } else {
+                        // Ball missed, remove it
+                        return null;
+                    }
+                }
+                return { ...ball, pos: newPos };
+            }).filter((b): b is Ball => b !== null);
+
+            return updatedBalls;
+        });
+
         gameLoopRef.current = requestAnimationFrame(gameLoop);
-    }, [ballPos, arcRadius, ballRadius, arc1Angle, arc2Angle, score, highScore]);
+    }, [score, highScore, arcRadius, ballRadius, arc1Angle, arc2Angle, gameState, addNewBall]);
 
     useEffect(() => {
         if (gameState === 'playing') {
@@ -184,17 +217,17 @@ const Game = () => {
             <div className="flex justify-around w-full text-center text-lg sm:text-2xl" style={{ maxWidth: gameSize }}>
                 <div>
                     <span>SCORE:</span>
-                    <div className="mt-1">{score}</div>
+                    <div className="mt-2">{score}</div>
                 </div>
                 <div>
                     <span>HIGHSCORE:</span>
-                    <div className="mt-1">{highScore}</div>
+                    <div className="mt-2">{highScore}</div>
                 </div>
             </div>
 
             <div className="relative mt-4" style={{ width: gameSize, height: gameSize }}>
                 <svg width={gameSize} height={gameSize} viewBox={`${-gameSize/2} ${-gameSize/2} ${gameSize} ${gameSize}`} className="absolute inset-0">
-                     <circle cx="0" cy="0" r={gameRadius - 2} stroke="white" strokeWidth="4" fill="none" />
+                     <circle cx="0" cy="0" r={arcRadius} stroke="white" strokeWidth="2" fill="none" />
                 </svg>
                 <AnimatePresence>
                     {gameState === 'idle' && (
@@ -220,9 +253,9 @@ const Game = () => {
                         <svg width={gameSize} height={gameSize} viewBox={`${-gameSize/2} ${-gameSize/2} ${gameSize} ${gameSize}`}>
                             <Arc angle={arc1Angle} />
                             <Arc angle={arc2Angle} />
-                            {gameState === 'playing' && (
-                                <circle cx={ballPos.x} cy={ballPos.y} r={ballRadius} fill="white" />
-                            )}
+                            {gameState === 'playing' && balls.map(ball => (
+                                <circle key={ball.id} cx={ball.pos.x} cy={ball.pos.y} r={ballRadius} fill="white" />
+                            ))}
                         </svg>
                     )}
                 </div>
@@ -230,7 +263,7 @@ const Game = () => {
 
             <div className="mt-6 text-center text-primary/80 text-xs sm:text-sm max-w-md px-4">
                 <p className="mb-2">A/D for left paddle, ←/→ for right paddle.</p>
-                <p>Don't let the ball escape the circle!</p>
+                <p>Don't let the balls escape the circle!</p>
             </div>
         </div>
     );
