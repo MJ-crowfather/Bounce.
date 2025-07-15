@@ -13,7 +13,7 @@ const ARC_THICKNESS_RATIO = 10 / BASE_GAME_SIZE;
 const ARC_LENGTH_DEGREES = 60; // 1/6th of 360
 const PADDLE_SPEED_DEGREES = 3;
 const INITIAL_BALL_SPEED_RATIO = 3 / BASE_GAME_SIZE;
-const SPEED_INCREASE_ON_BOUNCE = 1.15; // 15% increase
+const SPEED_INCREASE_ON_BOUNCE = 1.15;
 
 const degreesToRadians = (deg: number) => deg * (Math.PI / 180);
 const radiansToDegrees = (rad: number) => rad * (180 / Math.PI);
@@ -112,15 +112,14 @@ const Game = () => {
         // Player 1 (Left) controls: A/D keys
         const arc1Movement = (keysPressed.current['d'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['a'] ? PADDLE_SPEED_DEGREES : 0);
         setArc1Angle(prev => Math.max(90 + ARC_LENGTH_DEGREES/2, Math.min(270 - ARC_LENGTH_DEGREES/2, prev + arc1Movement)));
-
+        
         // Player 2 (Right) controls: Arrow keys
         const arc2Movement = (keysPressed.current['arrowright'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['arrowleft'] ? PADDLE_SPEED_DEGREES : 0);
         setArc2Angle(prev => {
             const nextAngleRaw = prev + arc2Movement;
             const limit = 90 - ARC_LENGTH_DEGREES / 2;
-            // Clamp within -limit and +limit
-            if (nextAngleRaw > limit) return limit;
-            if (nextAngleRaw < -limit) return -limit;
+            if (nextAngleRaw >= limit && nextAngleRaw <= 270 + ARC_LENGTH_DEGREES /2) return limit;
+            if (nextAngleRaw <= -limit && nextAngleRaw > -270 - ARC_LENGTH_DEGREES/2) return -limit;
             return nextAngleRaw;
         });
 
@@ -161,7 +160,7 @@ const Game = () => {
                     newVelDx *= SPEED_INCREASE_ON_BOUNCE;
                     newVelDy *= SPEED_INCREASE_ON_BOUNCE;
                     
-                    const randomAngle = (Math.random() - 0.5) * degreesToRadians(10);
+                    const randomAngle = (Math.random() - 0.5) * degreesToRadians(15);
                     const cos = Math.cos(randomAngle);
                     const sin = Math.sin(randomAngle);
                     const finalVelDx = newVelDx * cos - newVelDy * sin;
@@ -192,7 +191,7 @@ const Game = () => {
         }
 
         gameLoopRef.current = requestAnimationFrame(gameLoop);
-    }, [score, highScore, arcRadius, ballRadius, arc1Angle, arc2Angle, gameState, addNewBall, balls]);
+    }, [score, highScore, arcRadius, ballRadius, gameState, addNewBall, balls, arc1Angle, arc2Angle]);
 
     useEffect(() => {
         if (gameState === 'playing') {
@@ -219,11 +218,11 @@ const Game = () => {
     return (
         <div className="relative flex flex-col items-center justify-center font-headline text-primary select-none w-full">
             <div className="flex justify-around w-full text-center text-lg sm:text-2xl" style={{ maxWidth: gameSize }}>
-                <div className="flex-1">
+                <div className="flex-1 px-4">
                     <span>SCORE</span>
                     <div className="mt-2">{score}</div>
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 px-4">
                     <span>HIGHSCORE</span>
                     <div className="mt-2">{highScore}</div>
                 </div>
@@ -231,7 +230,7 @@ const Game = () => {
 
             <div className="relative mt-4" style={{ width: gameSize, height: gameSize }}>
                 <svg width={gameSize} height={gameSize} viewBox={`${-gameSize/2} ${-gameSize/2} ${gameSize} ${gameSize}`} className="absolute inset-0">
-                    <circle cx="0" cy="0" r={gameRadius - arcThickness / 2} stroke="white" strokeWidth="2" fill="none" />
+                    <circle cx="0" cy="0" r={arcRadius} stroke="white" strokeWidth="2" fill="none" />
                 </svg>
                 <AnimatePresence>
                     {gameState === 'idle' && (
@@ -273,3 +272,5 @@ const Game = () => {
     );
 };
 export default Game;
+
+    
