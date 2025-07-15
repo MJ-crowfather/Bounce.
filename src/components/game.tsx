@@ -13,7 +13,7 @@ const ARC_THICKNESS_RATIO = 10 / BASE_GAME_SIZE;
 const ARC_LENGTH_DEGREES = 60; // 1/6th of 360
 const PADDLE_SPEED_DEGREES = 3;
 const INITIAL_BALL_SPEED_RATIO = 3 / BASE_GAME_SIZE;
-const SPEED_INCREASE_ON_BOUNCE = 1.20; // 20% increase
+const SPEED_INCREASE_ON_BOUNCE = 1.15; // 20% increase
 
 const degreesToRadians = (deg: number) => deg * (Math.PI / 180);
 const radiansToDegrees = (rad: number) => rad * (180 / Math.PI);
@@ -47,9 +47,10 @@ const Game = () => {
     const keysPressed = useRef<{ [key: string]: boolean }>({});
     const gameLoopRef = useRef<number>();
     const nextBallId = useRef(0);
+    const bounceCount = useRef(0); // ✅ New: track total bounces
 
     // --- Effects ---
-    
+
     // Responsive game size
     useEffect(() => {
         const updateSize = () => {
@@ -96,6 +97,7 @@ const Game = () => {
 
     const startGame = useCallback(() => {
         setScore(0);
+        bounceCount.current = 0; // ✅ Reset bounce count
         setBalls([]);
         setArc1Angle(180);
         setArc2Angle(0);
@@ -107,7 +109,6 @@ const Game = () => {
     const gameLoop = useCallback(() => {
         if (gameState !== 'playing') return;
 
-        // Update Arc Positions
         const arc1Movement = (keysPressed.current['d'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['a'] ? PADDLE_SPEED_DEGREES : 0);
         setArc1Angle(prev => Math.max(90 + ARC_LENGTH_DEGREES/2, Math.min(270 - ARC_LENGTH_DEGREES/2, prev + arc1Movement)));
 
@@ -122,7 +123,7 @@ const Game = () => {
 
         let gameOver = false;
         const updatedBalls = balls.map(ball => {
-            if (gameOver) return ball; // Don't process other balls if game is already over
+            if (gameOver) return ball;
 
             let newPos = { x: ball.pos.x + ball.vel.dx, y: ball.pos.y + ball.vel.dy };
             const distFromCenter = Math.sqrt(newPos.x * newPos.x + newPos.y * newPos.y);
@@ -142,40 +143,34 @@ const Game = () => {
                 };
 
                 if (isHittingArc1() || isHittingArc2()) {
-                    const newScore = score + 1;
-                    setScore(newScore);
-
-                    if (newScore > 0 && newScore % 5 === 0) {
+                    bounceCount.current += 1; // ✅ Track bounce
+                    setScore(prev => prev + 1);
+                    if (bounceCount.current % 5 === 0) {
                         addNewBall();
                     }
 
-                    // Reflect velocity
                     const normal = { x: newPos.x / distFromCenter, y: newPos.y / distFromCenter };
                     const dot = ball.vel.dx * normal.x + ball.vel.dy * normal.y;
                     let newVelDx = ball.vel.dx - 2 * dot * normal.x;
                     let newVelDy = ball.vel.dy - 2 * dot * normal.y;
-                    
+
                     newVelDx *= SPEED_INCREASE_ON_BOUNCE;
                     newVelDy *= SPEED_INCREASE_ON_BOUNCE;
 
-                    // Add slight random angle variation on bounce
-                    const randomAngle = (Math.random() - 0.5) * degreesToRadians(10); // +/- 5 degrees
+                    const randomAngle = (Math.random() - 0.5) * degreesToRadians(10);
                     const cos = Math.cos(randomAngle);
                     const sin = Math.sin(randomAngle);
                     const finalVelDx = newVelDx * cos - newVelDy * sin;
                     const finalVelDy = newVelDx * sin + newVelDy * cos;
                     ball.vel = { dx: finalVelDx, dy: finalVelDy };
 
-                    // Move ball away from edge
                     newPos.x -= normal.x * 2;
                     newPos.y -= normal.y * 2;
-                    
-                    return { ...ball, pos: newPos, vel: ball.vel };
 
+                    return { ...ball, pos: newPos, vel: ball.vel };
                 } else {
-                    // Ball missed, trigger game over
                     gameOver = true;
-                    return ball; // Return the ball as is, we'll handle game over outside the map
+                    return ball;
                 }
             }
             return { ...ball, pos: newPos };
@@ -187,14 +182,13 @@ const Game = () => {
                 setHighScore(score);
                 localStorage.setItem('bounceHighScore', score.toString());
             }
-            setBalls([]); // Clear all balls on game over
+            setBalls([]);
         } else {
             setBalls(updatedBalls);
         }
 
         gameLoopRef.current = requestAnimationFrame(gameLoop);
     }, [score, highScore, arcRadius, ballRadius, arc1Angle, arc2Angle, gameState, addNewBall, balls]);
-
 
     useEffect(() => {
         if (gameState === 'playing') {
@@ -205,12 +199,10 @@ const Game = () => {
         };
     }, [gameState, gameLoop]);
 
-    // --- Render ---
-
     const Arc = ({ angle, ...props }: { angle: number, [key: string]: any }) => {
         const startAngleRad = degreesToRadians(angle - ARC_LENGTH_DEGREES / 2);
         const endAngleRad = degreesToRadians(angle + ARC_LENGTH_DEGREES / 2);
-        
+
         const x1 = arcRadius * Math.cos(startAngleRad);
         const y1 = arcRadius * Math.sin(startAngleRad);
         const x2 = arcRadius * Math.cos(endAngleRad);
@@ -235,7 +227,7 @@ const Game = () => {
 
             <div className="relative mt-4" style={{ width: gameSize, height: gameSize }}>
                 <svg width={gameSize} height={gameSize} viewBox={`${-gameSize/2} ${-gameSize/2} ${gameSize} ${gameSize}`} className="absolute inset-0">
-                     <circle cx="0" cy="0" r={gameRadius - arcThickness / 2} stroke="white" strokeWidth="2" fill="none" />
+                    <circle cx="0" cy="0" r={gameRadius - arcThickness / 2} stroke="white" strokeWidth="2" fill="none" />
                 </svg>
                 <AnimatePresence>
                     {gameState === 'idle' && (
@@ -245,7 +237,7 @@ const Game = () => {
                         </motion.div>
                     )}
                     {gameState === 'gameOver' && (
-                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-black/70 rounded-full text-center p-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-black/70 rounded-full text-center p-4">
                             <h2 className="text-3xl sm:text-5xl mb-2 text-primary">GAME OVER</h2>
                             <p className="text-xl sm:text-2xl mb-6 text-primary">SCORE: {score}</p>
                             <Button onClick={startGame} size="lg" variant="outline" className="text-base sm:text-xl bg-transparent text-primary hover:bg-primary hover:text-background border-2 px-4 py-2">
@@ -275,5 +267,5 @@ const Game = () => {
             </div>
         </div>
     );
-}
+};
 export default Game;
