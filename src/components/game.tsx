@@ -34,7 +34,7 @@ const Game = () => {
     const arcRadius = gameRadius - arcThickness / 2;
 
     // Game State
-    const [gameState, setGameState<'idle' | 'playing' | 'gameOver'>('idle');
+    const [gameState, setGameState] = useState<'idle' | 'playing' | 'gameOver'>('idle');
     const [score, setScore] = useState(0);
     const [highScore, setHighScore] = useState(0);
     const [balls, setBalls] = useState<Ball[]>([]);
