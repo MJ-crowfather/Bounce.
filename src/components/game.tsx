@@ -97,96 +97,104 @@ const Game = () => {
     const startGame = useCallback(() => {
         setScore(0);
         setBalls([]);
+        setArc1Angle(180);
+        setArc2Angle(0);
         nextBallId.current = 0;
         addNewBall();
         setGameState('playing');
     }, [addNewBall]);
 
     const gameLoop = useCallback(() => {
+        if (gameState !== 'playing') return;
+
         // Update Arc Positions
         const arc1Movement = (keysPressed.current['d'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['a'] ? PADDLE_SPEED_DEGREES : 0);
-        setArc1Angle(prev => Math.max(90, Math.min(270, prev + arc1Movement)));
+        setArc1Angle(prev => Math.max(90 + ARC_LENGTH_DEGREES/2, Math.min(270 - ARC_LENGTH_DEGREES/2, prev + arc1Movement)));
 
         const arc2Movement = (keysPressed.current['arrowright'] ? PADDLE_SPEED_DEGREES : 0) - (keysPressed.current['arrowleft'] ? PADDLE_SPEED_DEGREES : 0);
         setArc2Angle(prev => {
             const nextAngleRaw = prev + arc2Movement;
-            if (nextAngleRaw > 90) return 90;
-            if (nextAngleRaw < -90) return -90;
+            const limit = 90 - ARC_LENGTH_DEGREES/2;
+            if (nextAngleRaw > limit) return limit;
+            if (nextAngleRaw < -limit) return -limit;
             return nextAngleRaw;
         });
 
-        setBalls(currentBalls => {
-            if (currentBalls.length === 0 && gameState === 'playing') {
-                setGameState('gameOver');
-                if (score > highScore) {
-                    setHighScore(score);
-                    localStorage.setItem('bounceHighScore', score.toString());
-                }
-                return [];
-            }
+        let gameOver = false;
+        const updatedBalls = balls.map(ball => {
+            if (gameOver) return ball; // Don't process other balls if game is already over
 
-            const updatedBalls = currentBalls.map(ball => {
-                let newPos = { x: ball.pos.x + ball.vel.dx, y: ball.pos.y + ball.vel.dy };
-                const distFromCenter = Math.sqrt(newPos.x * newPos.x + newPos.y * newPos.y);
+            let newPos = { x: ball.pos.x + ball.vel.dx, y: ball.pos.y + ball.vel.dy };
+            const distFromCenter = Math.sqrt(newPos.x * newPos.x + newPos.y * newPos.y);
 
-                if (distFromCenter > arcRadius - ballRadius) {
-                    const ballAngleDegrees = (radiansToDegrees(Math.atan2(newPos.y, newPos.x)) + 360) % 360;
+            if (distFromCenter > arcRadius - ballRadius) {
+                const ballAngleDegrees = (radiansToDegrees(Math.atan2(newPos.y, newPos.x)) + 360) % 360;
 
-                    const isHittingArc1 = () => {
-                        const halfArc = ARC_LENGTH_DEGREES / 2;
-                        return ballAngleDegrees >= arc1Angle - halfArc && ballAngleDegrees <= arc1Angle + halfArc;
-                    };
+                const isHittingArc1 = () => {
+                    const halfArc = ARC_LENGTH_DEGREES / 2;
+                    return ballAngleDegrees >= arc1Angle - halfArc && ballAngleDegrees <= arc1Angle + halfArc;
+                };
 
-                    const isHittingArc2 = () => {
-                         const halfArc = ARC_LENGTH_DEGREES / 2;
-                         const normalizedAngle = ballAngleDegrees > 180 ? ballAngleDegrees - 360 : ballAngleDegrees;
-                         return normalizedAngle >= arc2Angle - halfArc && normalizedAngle <= arc2Angle + halfArc;
-                    };
+                const isHittingArc2 = () => {
+                     const halfArc = ARC_LENGTH_DEGREES / 2;
+                     const normalizedAngle = ballAngleDegrees > 270 ? ballAngleDegrees - 360 : ballAngleDegrees;
+                     return normalizedAngle >= arc2Angle - halfArc && normalizedAngle <= arc2Angle + halfArc;
+                };
 
-                    if (isHittingArc1() || isHittingArc2()) {
-                        const newScore = score + 1;
-                        setScore(newScore);
+                if (isHittingArc1() || isHittingArc2()) {
+                    const newScore = score + 1;
+                    setScore(newScore);
 
-                        if (newScore > 0 && newScore % 5 === 0) {
-                             addNewBall();
-                        }
-
-                        // Reflect velocity
-                        const normal = { x: newPos.x / distFromCenter, y: newPos.y / distFromCenter };
-                        const dot = ball.vel.dx * normal.x + ball.vel.dy * normal.y;
-                        let newVelDx = ball.vel.dx - 2 * dot * normal.x;
-                        let newVelDy = ball.vel.dy - 2 * dot * normal.y;
-                        
-                        newVelDx *= SPEED_INCREASE_ON_BOUNCE;
-                        newVelDy *= SPEED_INCREASE_ON_BOUNCE;
-
-                        // Add slight random angle variation on bounce
-                        const randomAngle = (Math.random() - 0.5) * degreesToRadians(10); // +/- 5 degrees
-                        const cos = Math.cos(randomAngle);
-                        const sin = Math.sin(randomAngle);
-                        const finalVelDx = newVelDx * cos - newVelDy * sin;
-                        const finalVelDy = newVelDx * sin + newVelDy * cos;
-                        ball.vel = { dx: finalVelDx, dy: finalVelDy };
-
-                        // Move ball away from edge
-                        newPos.x -= normal.x * 2;
-                        newPos.y -= normal.y * 2;
-                        
-                        return { ...ball, pos: newPos };
-
-                    } else {
-                        // Ball missed, remove it
-                        return null;
+                    if (newScore > 0 && newScore % 5 === 0) {
+                         addNewBall();
                     }
-                }
-                return { ...ball, pos: newPos };
-            }).filter((b): b is Ball => b !== null);
 
-            return updatedBalls;
+                    // Reflect velocity
+                    const normal = { x: newPos.x / distFromCenter, y: newPos.y / distFromCenter };
+                    const dot = ball.vel.dx * normal.x + ball.vel.dy * normal.y;
+                    let newVelDx = ball.vel.dx - 2 * dot * normal.x;
+                    let newVelDy = ball.vel.dy - 2 * dot * normal.y;
+                    
+                    newVelDx *= SPEED_INCREASE_ON_BOUNCE;
+                    newVelDy *= SPEED_INCREASE_ON_BOUNCE;
+
+                    // Add slight random angle variation on bounce
+                    const randomAngle = (Math.random() - 0.5) * degreesToRadians(10); // +/- 5 degrees
+                    const cos = Math.cos(randomAngle);
+                    const sin = Math.sin(randomAngle);
+                    const finalVelDx = newVelDx * cos - newVelDy * sin;
+                    const finalVelDy = newVelDx * sin + newVelDy * cos;
+                    ball.vel = { dx: finalVelDx, dy: finalVelDy };
+
+                    // Move ball away from edge
+                    newPos.x -= normal.x * 2;
+                    newPos.y -= normal.y * 2;
+                    
+                    return { ...ball, pos: newPos };
+
+                } else {
+                    // Ball missed, trigger game over
+                    gameOver = true;
+                    return ball; // Return the ball as is, we'll handle game over outside the map
+                }
+            }
+            return { ...ball, pos: newPos };
         });
 
+        if (gameOver) {
+            setGameState('gameOver');
+            if (score > highScore) {
+                setHighScore(score);
+                localStorage.setItem('bounceHighScore', score.toString());
+            }
+            setBalls([]); // Clear all balls on game over
+        } else {
+            setBalls(updatedBalls);
+        }
+
         gameLoopRef.current = requestAnimationFrame(gameLoop);
-    }, [score, highScore, arcRadius, ballRadius, arc1Angle, arc2Angle, gameState, addNewBall]);
+    }, [score, highScore, arcRadius, ballRadius, arc1Angle, arc2Angle, gameState, addNewBall, balls]);
+
 
     useEffect(() => {
         if (gameState === 'playing') {
@@ -215,12 +223,12 @@ const Game = () => {
     return (
         <div className="relative flex flex-col items-center justify-center font-headline text-primary select-none w-full">
             <div className="flex justify-around w-full text-center text-lg sm:text-2xl" style={{ maxWidth: gameSize }}>
-                <div>
-                    <span>SCORE:</span>
+                <div className="flex-1">
+                    <span>SCORE</span>
                     <div className="mt-2">{score}</div>
                 </div>
-                <div>
-                    <span>HIGHSCORE:</span>
+                <div className="flex-1">
+                    <span>HIGHSCORE</span>
                     <div className="mt-2">{highScore}</div>
                 </div>
             </div>
